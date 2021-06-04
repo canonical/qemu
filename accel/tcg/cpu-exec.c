@@ -26,6 +26,7 @@
 #include "disas/disas.h"
 #include "exec/exec-all.h"
 #include "tcg/tcg.h"
+#include "tcg/tcg-apple-jit.h"
 #include "qemu/atomic.h"
 #include "qemu/compiler.h"
 #include "qemu/timer.h"

@@ -362,6 +362,7 @@ tsan="no"
 fortify_source="$default_feature"
 strip_opt="yes"
 tcg_interpreter="false"
+tcg_threaded_interpreter="false"
 bigendian="no"
 mingw32="no"
 gcov="no"
@@ -463,9 +464,11 @@ gettext="auto"
 fuse="auto"
 fuse_lseek="auto"
 multiprocess="auto"
+shared_lib="false"
 
 malloc_trim="auto"
 gio="$default_feature"
+slirp_smbd="auto"
 
 # parse CC options second
 for opt do
@@ -835,8 +838,6 @@ do
     fi
 done
 
-: ${smbd=${SMBD-/usr/sbin/smbd}}
-
 # Default objcc to clang if available, otherwise use CC
 if has clang; then
   objcc=clang
@@ -1114,6 +1115,10 @@ for opt do
   --disable-tcg-interpreter) tcg_interpreter="false"
   ;;
   --enable-tcg-interpreter) tcg_interpreter="true"
+  ;;
+  --disable-tcg-tcti) tcg_threaded_interpreter="false"
+  ;;
+  --enable-tcg-tcti) tcg_threaded_interpreter="true"
   ;;
   --disable-cap-ng)  cap_ng="disabled"
   ;;
@@ -1565,6 +1570,14 @@ for opt do
   ;;
   --disable-gio) gio=no
   ;;
+  --enable-slirp-smbd) slirp_smbd=yes
+  ;;
+  --disable-slirp-smbd) slirp_smbd=no
+  ;;
+  --enable-shared-lib) shared_lib=true
+  ;;
+  --disable-shared-lib) shared_lib=false
+  ;;
   *)
       echo "ERROR: unknown option $opt"
       echo "Try '$0 --help' for more information"
@@ -1778,7 +1791,7 @@ Advanced options (experts only):
   --oss-lib                path to OSS library
   --cpu=CPU                Build for host CPU [$cpu]
   --with-coroutine=BACKEND coroutine backend. Supported options:
-                           ucontext, sigaltstack, windows
+                           ucontext, libucontext, sigaltstack, windows
   --enable-gcov            enable test coverage analysis with gcov
   --disable-blobs          disable installing provided firmware blobs
   --with-vss-sdk=SDK-path  enable Windows VSS support in QEMU Guest Agent
@@ -1792,6 +1805,7 @@ Advanced options (experts only):
                            enable plugins via shared library loading
   --disable-containers     don't use containers for cross-building
   --gdb=GDB-path           gdb to use for gdbstub tests [$gdb_bin]
+  --enable-shared-lib      build QEMU as a shared library
 
 Optional features, enabled with --enable-FEATURE and
 disabled with --disable-FEATURE, default is enabled if available
@@ -1919,6 +1933,7 @@ disabled with --disable-FEATURE, default is enabled if available
   fuse-lseek      SEEK_HOLE/SEEK_DATA support for FUSE exports
   multiprocess    Out of process device emulation support
   gio             libgio support
+  slirp-smbd      use smbd (at path --smbd=*) in slirp networking
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -4535,11 +4550,25 @@ else
       error_exit "only the 'windows' coroutine backend is valid for Windows"
     fi
     ;;
+  libucontext)
+  ;;
   *)
     error_exit "unknown coroutine backend $coroutine"
     ;;
   esac
 fi
+
+case $coroutine in
+libucontext)
+  git_submodules="${git_submodules} subprojects/libucontext"
+  coroutine_impl=ucontext
+  libucontext="enabled"
+  ;;
+*)
+  coroutine_impl=$coroutine
+  libucontext="disabled"
+  ;;
+esac
 
 if test "$coroutine_pool" = ""; then
   coroutine_pool=yes
@@ -5250,10 +5279,23 @@ case "$slirp" in
   auto | enabled | internal)
     # Simpler to always update submodule, even if not needed.
     if test "$git_submodules_action" != "ignore"; then
-      git_submodules="${git_submodules} slirp"
+      git_submodules="${git_submodules} subprojects/libslirp"
     fi
     ;;
 esac
+
+# Check for slirp smbd dupport
+: ${smbd=${SMBD-/usr/sbin/smbd}}
+if test "$slirp_smbd" != "no" ; then
+  if test "$mingw32" = "yes" ; then
+    if test "$slirp_smbd" = "yes" ; then
+      error_exit "Host smbd not supported on this platform."
+    fi
+    slirp_smbd=no
+  else
+    slirp_smbd=yes
+  fi
+fi
 
 ##########################################
 # check for usable __NR_keyctl syscall
@@ -5530,7 +5572,10 @@ fi
 if test "$guest_agent" = "yes" ; then
   echo "CONFIG_GUEST_AGENT=y" >> $config_host_mak
 fi
-echo "CONFIG_SMBD_COMMAND=\"$smbd\"" >> $config_host_mak
+if test "$slirp_smbd" = "yes" ; then
+  echo "CONFIG_SLIRP_SMBD=y" >> $config_host_mak
+  echo "CONFIG_SMBD_COMMAND=\"$smbd\"" >> $config_host_mak
+fi
 if test "$vde" = "yes" ; then
   echo "CONFIG_VDE=y" >> $config_host_mak
   echo "VDE_LIBS=$vde_libs" >> $config_host_mak
@@ -5861,7 +5906,7 @@ if test "$qom_cast_debug" = "yes" ; then
   echo "CONFIG_QOM_CAST_DEBUG=y" >> $config_host_mak
 fi
 
-echo "CONFIG_COROUTINE_BACKEND=$coroutine" >> $config_host_mak
+echo "CONFIG_COROUTINE_BACKEND=$coroutine_impl" >> $config_host_mak
 if test "$coroutine_pool" = "yes" ; then
   echo "CONFIG_COROUTINE_POOL=1" >> $config_host_mak
 else
@@ -6343,7 +6388,11 @@ echo "ranlib = [$(meson_quote $ranlib)]" >> $cross
 if has $sdl2_config; then
   echo "sdl2-config = [$(meson_quote $sdl2_config)]" >> $cross
 fi
-echo "strip = [$(meson_quote $strip)]" >> $cross
+if test "$shared_lib" = "true"; then
+  echo "strip = [$(meson_quote $strip), '-x']" >> $cross
+else
+  echo "strip = [$(meson_quote $strip)]" >> $cross
+fi
 echo "windres = [$(meson_quote $windres)]" >> $cross
 if test "$cross_compile" = "yes"; then
     cross_arg="--cross-file config-meson.cross"
@@ -6420,14 +6469,13 @@ NINJA=$ninja $meson setup \
         -Dlibnfs=$libnfs -Diconv=$iconv -Dcurses=$curses -Dlibudev=$libudev\
         -Drbd=$rbd -Dlzo=$lzo -Dsnappy=$snappy -Dlzfse=$lzfse \
         -Dzstd=$zstd -Dseccomp=$seccomp -Dvirtfs=$virtfs -Dcap_ng=$cap_ng \
-        -Dattr=$attr -Ddefault_devices=$default_devices \
+        -Dattr=$attr -Ddefault_devices=$default_devices -Ducontext=$libucontext \
         -Ddocs=$docs -Dsphinx_build=$sphinx_build -Dinstall_blobs=$blobs \
         -Dvhost_user_blk_server=$vhost_user_blk_server -Dmultiprocess=$multiprocess \
         -Dfuse=$fuse -Dfuse_lseek=$fuse_lseek -Dguest_agent_msi=$guest_agent_msi \
         $(if test "$default_features" = no; then echo "-Dauto_features=disabled"; fi) \
-	-Dtcg_interpreter=$tcg_interpreter \
-        $cross_arg \
-        "$PWD" "$source_path"
+	-Dtcg_interpreter=$tcg_interpreter -Dtcg_threaded_interpreter=$tcg_threaded_interpreter\
+	-Dshared_lib=$shared_lib $cross_arg "$PWD" "$source_path"
 
 if test "$?" -ne 0 ; then
     error_exit "meson setup failed"

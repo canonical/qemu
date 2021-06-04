@@ -39,6 +39,10 @@ extern int madvise(char *, size_t, int);
 #include "qemu/error-report.h"
 #include "monitor/monitor.h"
 
+#ifdef CONFIG_DARWIN
+#include "tcg/tcg-apple-jit.h"
+#endif
+
 static bool fips_enabled = false;
 
 static const char *hw_version = QEMU_HW_VERSION;

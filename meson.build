@@ -58,6 +58,7 @@ python = import('python').find_installation()
 supported_oses = ['windows', 'freebsd', 'netbsd', 'openbsd', 'darwin', 'sunos', 'linux']
 supported_cpus = ['ppc', 'ppc64', 's390x', 'riscv32', 'riscv64', 'x86', 'x86_64',
   'arm', 'aarch64', 'mips', 'mips64', 'sparc', 'sparc64']
+tcti_supported_cpus = ['aarch64']
 
 cpu = host_machine.cpu_family()
 targetos = host_machine.system()
@@ -77,6 +78,13 @@ else
 endif
 
 accelerator_targets = { 'CONFIG_KVM': kvm_targets }
+
+if cpu in ['aarch64']
+  accelerator_targets += {
+    'CONFIG_HVF': ['aarch64-softmmu']
+  }
+endif
+
 if cpu in ['x86', 'x86_64', 'arm', 'aarch64']
   # i368 emulator provides xenpv machine type for multiple architectures
   accelerator_targets += {
@@ -169,6 +177,7 @@ socket = []
 version_res = []
 coref = []
 iokit = []
+vmnet = not_found
 emulator_link_args = []
 hvf = not_found
 if targetos == 'windows'
@@ -181,7 +190,8 @@ if targetos == 'windows'
                                       include_directories: include_directories('.'))
 elif targetos == 'darwin'
   coref = dependency('appleframeworks', modules: 'CoreFoundation')
-  iokit = dependency('appleframeworks', modules: 'IOKit')
+  iokit = dependency('appleframeworks', modules: 'IOKit', required: false)
+  vmnet = dependency('appleframeworks', modules: 'vmnet', required: false)
 elif targetos == 'sunos'
   socket = [cc.find_library('socket'),
             cc.find_library('nsl'),
@@ -246,6 +256,25 @@ if not get_option('tcg').disabled()
   endif
   if get_option('tcg_interpreter')
     tcg_arch = 'tci'
+  elif get_option('tcg_threaded_interpreter')
+    if cpu not in tcti_supported_cpus
+      error('Unsupported CPU @0@ for TCTI, try --enable-tcg-interpreter'.format(cpu))
+    else
+      warning('TCTI is extremely experimental and incomplete! Things might break!')
+      tcg_arch = '@0@-tcti'.format(cpu)
+    endif
+
+    # Tell our compiler how to generate our TCTI gadgets.
+    gadget_generator = 'tcg/@0@/tcti-gadget-gen.py'.format(tcg_arch)
+    tcti_gadgets = custom_target('tcti-gadgets.c.inc',
+                                output: 'tcti-gadgets.c.inc',
+                                input: gadget_generator,
+                                command: [find_program(gadget_generator), '@OUTPUT@'],
+                                build_by_default: true,
+                                build_always_stale: false)
+
+    genh += tcti_gadgets
+    
   elif config_host['ARCH'] == 'sparc64'
     tcg_arch = 'sparc'
   elif config_host['ARCH'] == 's390x'
@@ -1056,6 +1085,9 @@ if get_option('cfi')
   add_global_link_arguments(cfi_flags, native: false, language: ['c', 'cpp', 'objc'])
 endif
 
+have_host_block_device = (targetos != 'darwin' or
+    cc.has_header('IOKit/storage/IOMedia.h'))
+
 #################
 # config-host.h #
 #################
@@ -1138,6 +1170,7 @@ config_host_data.set('CONFIG_FUSE', fuse.found())
 config_host_data.set('CONFIG_FUSE_LSEEK', fuse_lseek.found())
 config_host_data.set('CONFIG_X11', x11.found())
 config_host_data.set('CONFIG_CFI', get_option('cfi'))
+config_host_data.set('CONFIG_VMNET', vmnet.found())
 config_host_data.set('QEMU_VERSION', '"@0@"'.format(meson.project_version()))
 config_host_data.set('QEMU_VERSION_MAJOR', meson.project_version().split('.')[0])
 config_host_data.set('QEMU_VERSION_MINOR', meson.project_version().split('.')[1])
@@ -1149,6 +1182,8 @@ config_host_data.set('HAVE_PTY_H', cc.has_header('pty.h'))
 config_host_data.set('HAVE_SYS_IOCCOM_H', cc.has_header('sys/ioccom.h'))
 config_host_data.set('HAVE_SYS_KCOV_H', cc.has_header('sys/kcov.h'))
 config_host_data.set('HAVE_SYSTEM_FUNCTION', cc.has_function('system', prefix: '#include <stdlib.h>'))
+config_host_data.set('HAVE_HOST_BLOCK_DEVICE', have_host_block_device)
+config_host_data.set('HAVE_SYS_DISK_H', cc.has_header('sys/disk.h'))
 
 config_host_data.set('CONFIG_PREADV', cc.has_function('preadv', prefix: '#include <sys/uio.h>'))
 
@@ -1276,6 +1311,8 @@ foreach target : target_dirs
       config_all += { sym: 'y' }
       if sym == 'CONFIG_TCG' and tcg_arch == 'tci'
         config_target += { 'CONFIG_TCG_INTERPRETER': 'y' }
+      elif sym == 'CONFIG_TCG' and tcg_arch.endswith('tcti')
+        config_target += { 'CONFIG_TCG_THREADED_INTERPRETER': 'y' }
       elif sym == 'CONFIG_XEN' and have_xen_pci_passthrough
         config_target += { 'CONFIG_XEN_PCI_PASSTHROUGH': 'y' }
       endif
@@ -1499,7 +1536,7 @@ slirp_opt = 'disabled'
 if have_system
   slirp_opt = get_option('slirp')
   if slirp_opt in ['enabled', 'auto', 'system']
-    have_internal = fs.exists(meson.current_source_dir() / 'slirp/meson.build')
+    have_internal = fs.exists(meson.current_source_dir() / 'subprojects/libslirp/meson.build')
     slirp = dependency('slirp', kwargs: static_kwargs,
                        method: 'pkg-config',
                        required: slirp_opt == 'system' or
@@ -1513,64 +1550,9 @@ if have_system
     endif
   endif
   if slirp_opt == 'internal'
-    slirp_deps = []
-    if targetos == 'windows'
-      slirp_deps = cc.find_library('iphlpapi')
-    endif
-    slirp_conf = configuration_data()
-    slirp_conf.set('SLIRP_MAJOR_VERSION', meson.project_version().split('.')[0])
-    slirp_conf.set('SLIRP_MINOR_VERSION', meson.project_version().split('.')[1])
-    slirp_conf.set('SLIRP_MICRO_VERSION', meson.project_version().split('.')[2])
-    slirp_conf.set_quoted('SLIRP_VERSION_STRING', meson.project_version())
-    slirp_cargs = ['-DG_LOG_DOMAIN="Slirp"']
-    slirp_files = [
-      'slirp/src/arp_table.c',
-      'slirp/src/bootp.c',
-      'slirp/src/cksum.c',
-      'slirp/src/dhcpv6.c',
-      'slirp/src/dnssearch.c',
-      'slirp/src/if.c',
-      'slirp/src/ip6_icmp.c',
-      'slirp/src/ip6_input.c',
-      'slirp/src/ip6_output.c',
-      'slirp/src/ip_icmp.c',
-      'slirp/src/ip_input.c',
-      'slirp/src/ip_output.c',
-      'slirp/src/mbuf.c',
-      'slirp/src/misc.c',
-      'slirp/src/ncsi.c',
-      'slirp/src/ndp_table.c',
-      'slirp/src/sbuf.c',
-      'slirp/src/slirp.c',
-      'slirp/src/socket.c',
-      'slirp/src/state.c',
-      'slirp/src/stream.c',
-      'slirp/src/tcp_input.c',
-      'slirp/src/tcp_output.c',
-      'slirp/src/tcp_subr.c',
-      'slirp/src/tcp_timer.c',
-      'slirp/src/tftp.c',
-      'slirp/src/udp.c',
-      'slirp/src/udp6.c',
-      'slirp/src/util.c',
-      'slirp/src/version.c',
-      'slirp/src/vmstate.c',
-    ]
-
-    configure_file(
-      input : 'slirp/src/libslirp-version.h.in',
-      output : 'libslirp-version.h',
-      configuration: slirp_conf)
-
-    slirp_inc = include_directories('slirp', 'slirp/src')
-    libslirp = static_library('slirp',
-                              build_by_default: false,
-                              sources: slirp_files,
-                              c_args: slirp_cargs,
-                              include_directories: slirp_inc)
-    slirp = declare_dependency(link_with: libslirp,
-                               dependencies: slirp_deps,
-                               include_directories: slirp_inc)
+    libslirp = subproject('libslirp',
+                          default_options: ['default_library=static'])
+    slirp = libslirp.get_variable('libslirp_dep')
   endif
 endif
 
@@ -1633,9 +1615,18 @@ if not fdt.found() and fdt_required.length() > 0
   error('fdt not available but required by targets ' + ', '.join(fdt_required))
 endif
 
+ucontext = dependency('libucontext', kwargs: static_kwargs, required : false)
+if not ucontext.found() and get_option('ucontext').enabled()
+  libucontext_proj = subproject('libucontext',
+                                default_options: ['default_library=static',
+                                                  'freestanding=true'])
+  ucontext = libucontext_proj.get_variable('libucontext_dep')
+endif
+
 config_host_data.set('CONFIG_CAPSTONE', capstone.found())
 config_host_data.set('CONFIG_FDT', fdt.found())
 config_host_data.set('CONFIG_SLIRP', slirp.found())
+config_host_data.set('CONFIG_LIBUCONTEXT', ucontext.found())
 
 #####################
 # Generated sources #
@@ -1844,6 +1835,7 @@ if have_system or have_user
     'accel/tcg',
     'hw/core',
     'target/arm',
+    'target/arm/hvf',
     'target/hppa',
     'target/i386',
     'target/i386/kvm',
@@ -1883,7 +1875,7 @@ util_ss.add_all(trace_ss)
 util_ss = util_ss.apply(config_all, strict: false)
 libqemuutil = static_library('qemuutil',
                              sources: util_ss.sources() + stub_ss.sources() + genh,
-                             dependencies: [util_ss.dependencies(), m, glib, socket, malloc])
+                             dependencies: [util_ss.dependencies(), m, glib, socket, malloc, ucontext])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res)
 
@@ -2213,14 +2205,31 @@ foreach target : target_dirs
   arch_srcs += target_specific.sources()
   arch_deps += target_specific.dependencies()
 
-  lib = static_library('qemu-' + target,
+  if get_option('shared_lib')
+    build_lib_args = {
+      'target_type': 'shared_library',
+      'install': true,
+      'dependencies': arch_deps + deps,
+      'link_language': link_language,
+      'link_depends': [block_syms, qemu_syms],
+      'link_args': link_args + cc.get_supported_link_arguments(['-Wl,-U,_qemu_main'])
+    }
+  else
+    build_lib_args = {
+      'target_type': 'static_library',
+      'install': false,
+      'dependencies': arch_deps,
+      'name_suffix': 'fa'
+    }
+  endif
+
+  lib = build_target('qemu-' + target,
                  sources: arch_srcs + genh,
-                 dependencies: arch_deps,
                  objects: objects,
                  include_directories: target_inc,
                  c_args: c_args,
                  build_by_default: false,
-                 name_suffix: 'fa')
+                 kwargs: build_lib_args)
 
   if target.endswith('-softmmu')
     execs = [{
@@ -2254,6 +2263,17 @@ foreach target : target_dirs
       'dependencies': []
     }]
   endif
+  if get_option('shared_lib')
+    build_exe_args = {
+      'link_with': lib,
+      'link_args': link_args + cc.get_supported_link_arguments(['-Wl,--exclude-libs,ALL'])
+    }
+  else
+    build_exe_args = {
+      'objects': lib.extract_all_objects(recursive: true),
+      'link_args': link_args
+    }
+  endif
   foreach exe: execs
     exe_name = exe['name']
     exe_sign = 'CONFIG_HVF' in config_target
@@ -2265,11 +2285,10 @@ foreach target : target_dirs
                install: true,
                c_args: c_args,
                dependencies: arch_deps + deps + exe['dependencies'],
-               objects: lib.extract_all_objects(recursive: true),
                link_language: link_language,
                link_depends: [block_syms, qemu_syms] + exe.get('link_depends', []),
-               link_args: link_args,
-               gui_app: exe['gui'])
+               gui_app: exe['gui'],
+               kwargs: build_exe_args)
 
     if exe_sign
       emulators += {exe['name'] : custom_target(exe['name'],
@@ -2436,6 +2455,7 @@ endif
 summary_info += {'Doc directory':     get_option('docdir')}
 summary_info += {'Build directory':   meson.current_build_dir()}
 summary_info += {'Source path':       meson.current_source_dir()}
+summary_info += {'build shared lib':  get_option('shared_lib')}
 summary_info += {'GIT submodules':    config_host['GIT_SUBMODULES']}
 summary(summary_info, bool_yn: true, section: 'Directories')
 
@@ -2452,7 +2472,7 @@ summary_info += {'genisoimage':       config_host['GENISOIMAGE']}
 if targetos == 'windows' and config_host.has_key('CONFIG_GUEST_AGENT')
   summary_info += {'wixl':            wixl.found() ? wixl.full_path() : false}
 endif
-if slirp_opt != 'disabled'
+if slirp_opt != 'disabled' and 'CONFIG_SLIRP_SMBD' in config_host
   summary_info += {'smbd':            config_host['CONFIG_SMBD_COMMAND']}
 endif
 summary(summary_info, bool_yn: true, section: 'Host binaries')
@@ -2586,6 +2606,8 @@ summary_info += {'TCG support':       config_all.has_key('CONFIG_TCG')}
 if config_all.has_key('CONFIG_TCG')
   if get_option('tcg_interpreter')
     summary_info += {'TCG backend':   'TCI (TCG with bytecode interpreter, experimental and slow)'}
+  elif get_option('tcg_threaded_interpreter')
+    summary_info += {'TCG backend':   'TCTI (TCG with threaded-dispatch bytecode interpreter, experimental and slow; but faster than TCI)'}
   else
     summary_info += {'TCG backend':   'native (@0@)'.format(cpu)}
   endif
@@ -2600,6 +2622,7 @@ summary(summary_info, bool_yn: true, section: 'Targets and accelerators')
 
 # Block layer
 summary_info = {}
+summary_info += {'libucontext support': ucontext.found()}
 summary_info += {'coroutine backend': config_host['CONFIG_COROUTINE_BACKEND']}
 summary_info += {'coroutine pool':    config_host['CONFIG_COROUTINE_POOL'] == '1'}
 if have_block

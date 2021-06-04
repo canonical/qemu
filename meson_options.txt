@@ -6,6 +6,8 @@ option('qemu_firmwarepath', type : 'string', value : '',
        description: 'search PATH for firmware files')
 option('sphinx_build', type : 'string', value : '',
        description: 'Use specified sphinx-build [$sphinx_build] for building document (default to be empty)')
+option('shared_lib', type : 'boolean', value : false,
+       description: 'build QEMU as a shared library')
 
 option('default_devices', type : 'boolean', value : true,
        description: 'Include a default selection of devices in emulators')
@@ -41,6 +43,8 @@ option('tcg', type: 'feature', value: 'auto',
        description: 'TCG support')
 option('tcg_interpreter', type: 'boolean', value: false,
        description: 'TCG with bytecode interpreter (experimental and slow)')
+option('tcg_threaded_interpreter', type: 'boolean', value: false,
+       description: 'TCG with threaded-dispatch bytecode interpreter (experimental and slow, but less slow than TCI)')
 option('cfi', type: 'boolean', value: 'false',
        description: 'Control-Flow Integrity (CFI)')
 option('cfi_debug', type: 'boolean', value: 'false',
@@ -108,6 +112,8 @@ option('fuse', type: 'feature', value: 'auto',
        description: 'FUSE block device export')
 option('fuse_lseek', type : 'feature', value : 'auto',
        description: 'SEEK_HOLE/SEEK_DATA support for FUSE exports')
+option('ucontext', type : 'feature', value : 'disabled',
+       description: 'libucontext support')
 
 option('vhost_user_blk_server', type: 'feature', value: 'auto',
        description: 'build vhost-user-blk server')

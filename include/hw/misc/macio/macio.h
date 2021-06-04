@@ -36,6 +36,7 @@
 #include "hw/ppc/mac.h"
 #include "hw/ppc/mac_dbdma.h"
 #include "hw/ppc/openpic.h"
+#include "hw/audio/screamer.h"
 #include "qom/object.h"
 
 /* MacIO virtual bus */
@@ -88,6 +89,7 @@ struct MacIOState {
     PMUState pmu;
     DBDMAState dbdma;
     ESCCState escc;
+    ScreamerState screamer;
     uint64_t frequency;
 };
 
