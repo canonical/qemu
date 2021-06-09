@@ -3682,7 +3682,9 @@ subdir('scripts')
 subdir('tools')
 subdir('pc-bios')
 subdir('docs')
-subdir('tests')
+if get_option('tests').enabled()
+  subdir('tests')
+endif
 if gtk.found()
   subdir('po')
 endif
@@ -3788,6 +3790,7 @@ summary_info += {'vhost-user-crypto support': have_vhost_user_crypto}
 summary_info += {'vhost-user-blk server support': have_vhost_user_blk_server}
 summary_info += {'vhost-vdpa support': have_vhost_vdpa}
 summary_info += {'build guest agent': have_ga}
+summary_info += {'build tests': get_option('tests').enabled()}
 summary(summary_info, bool_yn: true, section: 'Configurable features')
 
 # Compilation information

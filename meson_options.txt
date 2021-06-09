@@ -238,6 +238,8 @@ option('fuse', type: 'feature', value: 'auto',
        description: 'FUSE block device export')
 option('fuse_lseek', type : 'feature', value : 'auto',
        description: 'SEEK_HOLE/SEEK_DATA support for FUSE exports')
+option('tests', type : 'feature', value : 'auto',
+       description: 'Tests build support')
 
 option('trace_backends', type: 'array', value: ['log'],
        choices: ['dtrace', 'ftrace', 'log', 'nop', 'simple', 'syslog', 'ust'],
