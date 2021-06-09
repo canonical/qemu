@@ -326,6 +326,7 @@ meson_args=""
 ninja=""
 gio="$default_feature"
 skip_meson=no
+tests="auto"
 
 # The following Meson options are handled manually (still they
 # are included in the automatically generated help message)
@@ -1027,6 +1028,10 @@ for opt do
   ;;
   --disable-gio) gio=no
   ;;
+  --disable-tests) tests="disabled"
+  ;;
+  --enable-tests) tests="enabled"
+  ;;
   # backwards compatibility options
   --enable-trace-backend=*) meson_option_parse "--enable-trace-backends=$optarg" "$optarg"
   ;;
@@ -1254,6 +1259,7 @@ cat << EOF
   vhost-vdpa      vhost-vdpa kernel backend support
   opengl          opengl support
   gio             libgio support
+  tests           build tests
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -3205,7 +3211,7 @@ if test "$skip_meson" = no; then
         -Db_lto=$lto -Dcfi=$cfi -Dtcg=$tcg -Dxen=$xen \
         -Dcapstone=$capstone -Dfdt=$fdt -Dslirp=$slirp \
         $(test -n "${LIB_FUZZING_ENGINE+xxx}" && echo "-Dfuzzing_engine=$LIB_FUZZING_ENGINE") \
-        $(if test "$default_feature" = no; then echo "-Dauto_features=disabled"; fi) \
+        -Dtests=$tests \
         "$@" $cross_arg "$PWD" "$source_path"
   }
   eval run_meson $meson_options
