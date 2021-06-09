@@ -258,6 +258,7 @@ rust="disabled"
 rust_target_triple=""
 gdb_bin=$(command -v "gdb-multiarch" || command -v "gdb")
 gdb_arches=""
+tests="auto"
 
 # Don't accept a target_list environment variable.
 unset target_list
@@ -779,6 +780,10 @@ for opt do
   --enable-rust) rust=enabled
   ;;
   --disable-rust) rust=disabled
+  ;;
+  --disable-tests) tests="disabled"
+  ;;
+  --enable-tests) tests="enabled"
   ;;
   # everything else has the same name in configure and meson
   --*) meson_option_parse "$opt" "$optarg"
@@ -1945,6 +1950,7 @@ if test "$skip_meson" = no; then
   test "$default_feature" = no && meson_option_add -Dauto_features=disabled
   test "$static" = yes && meson_option_add -Dprefer_static=true
   test "$pie" = no && meson_option_add -Db_pie=false
+  test "$tests" != enabled && meson_option_add "-Dtests=$tests"
 
   # QEMU options
   test "$rust" != "disabled" && meson_option_add "-Drust=$rust"
