@@ -291,6 +291,7 @@ ninja=""
 bindir="bin"
 skip_meson=no
 vfio_user_server="disabled"
+tests="auto"
 
 # The following Meson options are handled manually (still they
 # are included in the automatically generated help message)
@@ -893,6 +894,10 @@ for opt do
   --disable-vfio-user-server) vfio_user_server="disabled"
   ;;
   --enable-tcmalloc) meson_option_parse --enable-malloc=tcmalloc tcmalloc
+  ;;
+  --disable-tests) tests="disabled"
+  ;;
+  --enable-tests) tests="enabled"
   ;;
   --enable-jemalloc) meson_option_parse --enable-malloc=jemalloc jemalloc
   ;;
@@ -2600,6 +2605,7 @@ if test "$skip_meson" = no; then
   test "$smbd" != '' && meson_option_add "-Dsmbd=$smbd"
   test "$tcg" != enabled && meson_option_add "-Dtcg=$tcg"
   test "$vfio_user_server" != auto && meson_option_add "-Dvfio_user_server=$vfio_user_server"
+  test "$tests" != enabled && meson_option_add "-Dtests=$tests"
   run_meson() {
     NINJA=$ninja $meson setup --prefix "$prefix" "$@" $cross_arg "$PWD" "$source_path"
   }
