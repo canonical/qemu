@@ -3110,7 +3110,9 @@ subdir('scripts')
 subdir('tools')
 subdir('pc-bios')
 subdir('docs')
-subdir('tests')
+if get_option('tests').enabled()
+  subdir('tests')
+endif
 if gtk.found()
   subdir('po')
 endif
@@ -3215,6 +3217,7 @@ summary_info += {'vhost-user-blk server support': have_vhost_user_blk_server}
 summary_info += {'vhost-user-fs support': config_host.has_key('CONFIG_VHOST_USER_FS')}
 summary_info += {'vhost-vdpa support': config_host.has_key('CONFIG_VHOST_VDPA')}
 summary_info += {'build guest agent': config_host.has_key('CONFIG_GUEST_AGENT')}
+summary_info += {'build tests': get_option('tests').enabled()}
 summary(summary_info, bool_yn: true, section: 'Configurable features')
 
 # Compilation information
