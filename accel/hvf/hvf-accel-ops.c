@@ -60,6 +60,10 @@
 
 HVFState *hvf_state;
 
+#ifdef __aarch64__
+#define HV_VM_DEFAULT NULL
+#endif
+
 /* Memory slots */
 
 hvf_slot *hvf_find_overlap_slot(uint64_t start, uint64_t size)
@@ -375,7 +379,11 @@ static int hvf_init_vcpu(CPUState *cpu)
     pthread_sigmask(SIG_BLOCK, NULL, &set);
     sigdelset(&set, SIG_IPI);
 
+#ifdef __aarch64__
+    r = hv_vcpu_create(&cpu->hvf->fd, (hv_vcpu_exit_t **)&cpu->hvf->exit, NULL);
+#else
     r = hv_vcpu_create((hv_vcpuid_t *)&cpu->hvf->fd, HV_VCPU_DEFAULT);
+#endif
     cpu->vcpu_dirty = 1;
     assert_hvf_ok(r);
 
