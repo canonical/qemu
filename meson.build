@@ -266,6 +266,7 @@ socket = []
 version_res = []
 coref = []
 iokit = []
+vmnet = not_found
 emulator_link_args = []
 nvmm =not_found
 hvf = not_found
@@ -282,6 +283,7 @@ if targetos == 'windows'
 elif targetos == 'darwin'
   coref = dependency('appleframeworks', modules: 'CoreFoundation')
   iokit = dependency('appleframeworks', modules: 'IOKit', required: false)
+  vmnet = dependency('appleframeworks', modules: 'vmnet', required: false)
   host_dsosuf = '.dylib'
 elif targetos == 'sunos'
   socket = [cc.find_library('socket'),
@@ -1485,6 +1487,7 @@ config_host_data.set('CONFIG_SPICE_PROTOCOL', spice_protocol.found())
 config_host_data.set('CONFIG_SPICE', spice.found())
 config_host_data.set('CONFIG_X11', x11.found())
 config_host_data.set('CONFIG_CFI', get_option('cfi'))
+config_host_data.set('CONFIG_VMNET', vmnet.found())
 config_host_data.set('CONFIG_SELINUX', selinux.found())
 config_host_data.set('QEMU_VERSION', '"@0@"'.format(meson.project_version()))
 config_host_data.set('QEMU_VERSION_MAJOR', meson.project_version().split('.')[0])
