@@ -4251,6 +4251,9 @@ int v9fs_device_realize_common(V9fsState *s, const V9fsTransport *t,
     s->ctx.dmode = fse->dmode;
 
     s->fids = g_hash_table_new(NULL, NULL);
+    s->ctx.uid_map = fse->uid_map;
+    s->ctx.gid_map = fse->gid_map;
+
     qemu_co_rwlock_init(&s->rename_lock);
 
     if (s->ops->init(&s->ctx, errp) < 0) {
