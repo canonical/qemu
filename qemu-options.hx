@@ -1907,6 +1907,7 @@ ERST
 DEF("virtfs", HAS_ARG, QEMU_OPTION_virtfs,
     "-virtfs local,path=path,mount_tag=tag,security_model=mapped-xattr|mapped-file|passthrough|none\n"
     "        [,id=id][,writeout=immediate][,readonly=on][,fmode=fmode][,dmode=dmode][,multidevs=remap|forbid|warn]\n"
+    "        [,uid_map=host_uid:guest_uid][,gid_map=host_gid:guest_gid]\n"
     "-virtfs synth,mount_tag=tag[,id=id][,readonly=on]\n",
     QEMU_ARCH_ALL)
 
@@ -2010,6 +2011,12 @@ SRST
         though that "forbid" does currently not block all possible file
         access operations (e.g. readdir() would still return entries from
         other devices).
+
+    ``uid_map=uid_map``
+        Specify a mapping between a host uid and a guest uid.
+
+    ``gid_map=gid_map``
+        Specify a mapping between a host gid and a guest gid.
 ERST
 
 DEF("iscsi", HAS_ARG, QEMU_OPTION_iscsi,
