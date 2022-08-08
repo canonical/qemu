@@ -83,6 +83,16 @@ typedef struct ExtendedOps {
 typedef struct FileOperations FileOperations;
 typedef struct XattrOperations XattrOperations;
 
+typedef struct UidMap {
+    uid_t host_uid;
+    uid_t guest_uid;
+} UidMap;
+
+typedef struct GidMap {
+    gid_t host_gid;
+    gid_t guest_gid;
+} GidMap;
+
 /*
  * Structure to store the various fsdev's passed through command line.
  */
@@ -94,6 +104,8 @@ typedef struct FsDriverEntry {
     FsThrottle fst;
     mode_t fmode;
     mode_t dmode;
+    UidMap uid_map;
+    GidMap gid_map;
 } FsDriverEntry;
 
 struct FsContext {
@@ -107,6 +119,8 @@ struct FsContext {
     void *private;
     mode_t fmode;
     mode_t dmode;
+    UidMap uid_map;
+    GidMap gid_map;
 };
 
 struct V9fsPath {
