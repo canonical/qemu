@@ -3054,7 +3054,7 @@ void qemu_init(int argc, char **argv)
                 QemuOpts *fsdev;
                 QemuOpts *device;
                 const char *writeout, *sock_fd, *socket, *path, *security_model,
-                           *multidevs;
+                           *multidevs, *uid_map, *gid_map;
 
                 olist = qemu_find_opts("virtfs");
                 if (!olist) {
@@ -3118,6 +3118,17 @@ void qemu_init(int argc, char **argv)
                 if (multidevs) {
                     qemu_opt_set(fsdev, "multidevs", multidevs, &error_abort);
                 }
+
+                uid_map = qemu_opt_get(opts, "uid_map");
+                if (uid_map) {
+                    qemu_opt_set(fsdev, "uid_map", uid_map, &error_abort);
+                }
+
+                gid_map = qemu_opt_get(opts, "gid_map");
+                if (gid_map) {
+                    qemu_opt_set(fsdev, "gid_map", gid_map, &error_abort);
+                }
+
                 device = qemu_opts_create(qemu_find_opts("device"), NULL, 0,
                                           &error_abort);
                 qemu_opt_set(device, "driver", "virtio-9p-pci", &error_abort);
