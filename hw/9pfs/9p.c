@@ -4226,6 +4226,9 @@ int v9fs_device_realize_common(V9fsState *s, const V9fsTransport *t,
     s->ctx.fmode = fse->fmode;
     s->ctx.dmode = fse->dmode;
 
+    s->ctx.uid_map = fse->uid_map;
+    s->ctx.gid_map = fse->gid_map;
+
     QSIMPLEQ_INIT(&s->fid_list);
     qemu_co_rwlock_init(&s->rename_lock);
 

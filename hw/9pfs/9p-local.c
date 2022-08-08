@@ -223,6 +223,14 @@ static int local_lstat(FsContext *fs_ctx, V9fsPath *fs_path, struct stat *stbuf)
         }
     } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
         local_mapped_file_attr(dirfd, name, stbuf);
+    } else if (fs_ctx->export_flags & V9FS_SM_PASSTHROUGH ||
+               fs_ctx->export_flags & V9FS_SM_NONE) {
+        if (stbuf->st_uid == fs_ctx->uid_map.host_uid) {
+            stbuf->st_uid = le32_to_cpu(fs_ctx->uid_map.guest_uid);
+        }
+        if (stbuf->st_gid == fs_ctx->gid_map.host_gid) {
+            stbuf->st_gid = le32_to_cpu(fs_ctx->gid_map.guest_gid);
+        }
     }
 
 err_out:
@@ -443,6 +451,13 @@ static int local_set_xattrat(int dirfd, const char *path, FsCred *credp)
 static int local_set_cred_passthrough(FsContext *fs_ctx, int dirfd,
                                       const char *name, FsCred *credp)
 {
+    if (credp->fc_uid == fs_ctx->uid_map.guest_uid) {
+        credp->fc_uid = fs_ctx->uid_map.host_uid;
+    }
+    if (credp->fc_gid == fs_ctx->gid_map.guest_gid) {
+        credp->fc_gid = fs_ctx->gid_map.host_gid;
+    }
+
     if (fchownat(dirfd, name, credp->fc_uid, credp->fc_gid,
                  AT_SYMLINK_NOFOLLOW) < 0) {
         /*
@@ -809,6 +824,14 @@ static int local_fstat(FsContext *fs_ctx, int fid_type,
     } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
         errno = EOPNOTSUPP;
         return -1;
+    } else if (fs_ctx->export_flags & V9FS_SM_PASSTHROUGH ||
+               fs_ctx->export_flags & V9FS_SM_NONE) {
+        if (stbuf->st_uid == fs_ctx->uid_map.host_uid) {
+            stbuf->st_uid = le32_to_cpu(fs_ctx->uid_map.guest_uid);
+        }
+        if (stbuf->st_gid == fs_ctx->gid_map.host_gid) {
+            stbuf->st_gid = le32_to_cpu(fs_ctx->gid_map.guest_gid);
+        }
     }
     return err;
 }
@@ -1058,6 +1081,12 @@ static int local_chown(FsContext *fs_ctx, V9fsPath *fs_path, FsCred *credp)
     if ((credp->fc_uid == -1 && credp->fc_gid == -1) ||
         (fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
         (fs_ctx->export_flags & V9FS_SM_NONE)) {
+        if (credp->fc_uid == fs_ctx->uid_map.guest_uid) {
+            credp->fc_uid = fs_ctx->uid_map.host_uid;
+        }
+        if (credp->fc_gid == fs_ctx->gid_map.guest_gid) {
+            credp->fc_gid = fs_ctx->gid_map.host_gid;
+        }
         ret = fchownat(dirfd, name, credp->fc_uid, credp->fc_gid,
                        AT_SYMLINK_NOFOLLOW);
     } else if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
@@ -1497,12 +1526,46 @@ static void error_append_security_model_hint(Error *const *errp)
                       "[passthrough|mapped-xattr|mapped-file|none]\n");
 }
 
+static int get_id_mapping(const char *id_map, u_int *host_id, u_int *guest_id, Error **errp)
+{
+    if (strchr(id_map, ':') == NULL) {
+        error_setg(errp, "must use a \':\' to separate map values");
+        return -1;
+    }
+
+    char *end;
+    char *map = strdup(id_map);
+    char *id = strtok(map, ":");
+
+    *host_id = strtol(id, &end, 10);
+
+    if (id == end) {
+        error_setg(errp, "\'%s\' is not valid. Must use an integer value.", id);
+        return -1;
+    }
+
+    id = strtok(NULL, ":");
+
+    *guest_id = strtol(id, &end, 10);
+
+    if (id == end) {
+        error_setg(errp, "\'%s\' is not valid. Must use an integer value.", id);
+        return -1;
+    }
+
+    free(map);
+
+    return 0;
+}
+
 static int local_parse_opts(QemuOpts *opts, FsDriverEntry *fse, Error **errp)
 {
     ERRP_GUARD();
     const char *sec_model = qemu_opt_get(opts, "security_model");
     const char *path = qemu_opt_get(opts, "path");
     const char *multidevs = qemu_opt_get(opts, "multidevs");
+    const char *uid_map = qemu_opt_get(opts, "uid_map");
+    const char *gid_map = qemu_opt_get(opts, "gid_map");
 
     if (!sec_model) {
         error_setg(errp, "security_model property not set");
@@ -1541,6 +1604,26 @@ static int local_parse_opts(QemuOpts *opts, FsDriverEntry *fse, Error **errp)
             error_append_hint(errp, "Valid options are: multidevs="
                               "[remap|forbid|warn]\n");
             return -1;
+        }
+    }
+
+    if (fse->export_flags & V9FS_SM_PASSTHROUGH || fse->export_flags & V9FS_SM_NONE) {
+        if (uid_map) {
+            if (get_id_mapping(uid_map, &fse->uid_map.host_uid, &fse->uid_map.guest_uid, errp) < 0) {
+                return -1;
+            }
+        } else {
+            fse->uid_map.host_uid = -1;
+            fse->uid_map.guest_uid = -1;
+        }
+
+        if (gid_map) {
+            if (get_id_mapping(gid_map, &fse->gid_map.host_gid, &fse->gid_map.guest_gid, errp) < 0) {
+                return -1;
+            }
+        } else {
+            fse->gid_map.host_gid = -1;
+            fse->gid_map.guest_gid = -1;
         }
     }
 
