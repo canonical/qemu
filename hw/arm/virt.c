@@ -1779,7 +1779,11 @@ static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
      * irrespective of the underlying capabilities of the HW.
      */
     if (!vms->highmem) {
+#ifdef CONFIG_DARWIN
+        pa_bits = 36;
+#else
         pa_bits = 32;
+#endif
     }
 
     /*
