@@ -676,7 +676,8 @@ meson_option_build_array() {
   for e in $1; do
     printf '"""'
     # backslash escape any '\' and '"' characters
-    printf "%s" "$e" | sed -e 's/\([\"]\)/\\\1/g'
+    #printf "%s" "$e" | sed -e 's/\([\"]\)/\\\1/g'
+    printf "%s" "$e"
     printf '""",'
   done)
   printf ']\n'
