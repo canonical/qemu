@@ -191,6 +191,8 @@ static void vmnet_send_bh(void *opaque)
 {
     NetClientState *nc = (NetClientState *) opaque;
     VmnetState *s = DO_UPCAST(VmnetState, nc, nc);
+    s->packets_send_current_pos = 0;
+    s->packets_send_end_pos = 0;
 
     /*
      * Do nothing if QEMU is not ready - wait
