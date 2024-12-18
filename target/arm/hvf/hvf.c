@@ -876,6 +876,12 @@ static bool hvf_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
     r |= hv_vcpu_get_sys_reg(fd, HV_SYS_REG_MIDR_EL1, &ahcf->midr);
     r |= hv_vcpu_destroy(fd);
 
+    /*
+     * Disable SME which is not properly handled by QEMU yet
+     * See https://gitlab.com/qemu-project/qemu/-/issues/2721 and https://github.com/utmapp/UTM/commit/acbf2ba8
+     */
+    host_isar.id_aa64pfr1 &= ~R_ID_AA64PFR1_SME_MASK;
+
     ahcf->isar = host_isar;
 
     /*
